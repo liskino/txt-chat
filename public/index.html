@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>txt-chat — редактор и чат</title>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #14171c; --panel2: #1b1f26; --border: #262b33;
+    --text: #e8eaf0; --muted: #8b93a1; --accent: #4f8cff; --accent2: #3a6fd8;
+    --ok: #34c273; --danger: #e05555;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── шапка ── */
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  header h1 { font-size: 17px; font-weight: 600; }
+  header .who { margin-left: auto; color: var(--muted); font-size: 13px; }
+  header button { background: none; border: 1px solid var(--border); color: var(--muted); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  header button:hover { color: var(--text); border-color: var(--accent); }
+
+  main { flex: 1; display: flex; min-height: 0; }
+
+  /* ── вкладки ── */
+  .tabs { display: flex; gap: 4px; padding: 8px 12px 0; background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tabs button { background: none; border: none; color: var(--muted); padding: 8px 16px; cursor: pointer; font-size: 14px; border-bottom: 2px solid transparent; }
+  .tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tabs button:hover { color: var(--text); }
+
+  /* ── сайдбар ── */
+  aside { width: 230px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+  aside .head { padding: 12px 14px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; display: flex; justify-content: space-between; }
+  aside .head .add { color: var(--accent); cursor: pointer; font-size: 16px; line-height: 1; }
+  aside .list { flex: 1; overflow-y: auto; }
+  .item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .item:hover { background: var(--panel2); }
+  .item.active { background: var(--panel2); border-left: 2px solid var(--accent); }
+  .item .nm { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .item .del { float: right; color: var(--muted); opacity: 0; }
+  .item:hover .del { opacity: 1; }
+  .item .del:hover { color: var(--danger); }
+
+  /* ── редактор ── */
+  .editor { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .editor .bar { display: flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .editor .bar input { flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 14px; }
+  .editor .bar .stat { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .btn { background: var(--accent); border: none; color: #fff; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  .btn:hover { background: var(--accent2); }
+  .btn.ghost { background: none; border: 1px solid var(--border); color: var(--muted); }
+  .btn.ghost:hover { color: var(--text); border-color: var(--accent); }
+  .editor textarea { flex: 1; background: var(--bg); color: var(--text); border: none; padding: 16px; font-family: Consolas, 'Courier New', monospace; font-size: 14px; line-height: 1.6; resize: none; outline: none; white-space: pre; }
+  .saved { color: var(--ok); font-size: 12px; }
+
+  /* ── чат ── */
+  .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat .log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 75%; background: var(--panel2); padding: 8px 12px; border-radius: 10px; align-self: flex-start; }
+  .msg.mine { align-self: flex-end; background: var(--accent2); }
+  .msg .meta { font-size: 11px; color: rgba(255,255,255,0.55); margin-bottom: 3px; }
+  .msg .body { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .msg .file { color: #ffd479; font-weight: 600; }
+  .chat .composer { display: flex; gap: 8px; padding: 12px 14px; background: var(--panel); border-top: 1px solid var(--border); }
+  .chat .composer textarea { flex: 1; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 9px 12px; border-radius: 8px; font-size: 14px; resize: none; height: 44px; outline: none; font-family: inherit; }
+  .chat .composer textarea:focus { border-color: var(--accent); }
+
+  /* ── люди ── */
+  .people { flex: 1; overflow-y: auto; padding: 16px; }
+  .person { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--panel2); border-radius: 10px; margin-bottom: 8px; }
+  .avatar { width: 38px; height: 38px; border-radius: 50%; background: var(--accent2); display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 15px; flex-shrink: 0; }
+  .person .info { flex: 1; }
+  .person .info .nm { font-size: 14px; }
+  .person .info .em { font-size: 12px; color: var(--muted); }
+  .person .when { font-size: 11px; color: var(--muted); }
+
+  /* ── вход/регистрация ── */
+  .auth { flex: 1; display: flex; align-items: center; justify-content: center; }
+  .auth .card { width: 340px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px; }
+  .auth h2 { font-size: 19px; margin-bottom: 4px; }
+  .auth .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .auth label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  .auth input { width: 100%; background: var(--panel2); border: 1px solid var(--border); color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px; outline: none; }
+  .auth input:focus { border-color: var(--accent); }
+  .auth .row { display: flex; gap: 8px; margin-top: 18px; }
+  .auth .row .btn { flex: 1; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 16px; }
+
+  .empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; }
+  .hidden { display: none !important; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📄 txt-chat</h1>
+  <span class="who" id="who"></span>
+  <button onclick="logout()">Выйти</button>
+</header>
+
+<div class="auth" id="authView">
+  <div class="card">
+    <h2 id="authTitle">Вход</h2>
+    <p class="sub">Редактор txt, чат и база людей</p>
+    <label>Email</label>
+    <input id="email" type="email" placeholder="you@example.com" />
+    <label>Имя</label>
+    <input id="name" type="text" placeholder="Как вас звать" class="hidden" id="nameField" />
+    <label>Пароль</label>
+    <input id="password" type="password" placeholder="минимум 6 символов" />
+    <div class="err" id="authErr"></div>
+    <div class="row">
+      <button class="btn" id="authBtn" onclick="submitAuth()">Войти</button>
+      <button class="btn ghost" id="switchBtn" onclick="toggleMode()">Регистрация</button>
+    </div>
+  </div>
+</div>
+
+<div class="hidden" id="appView" style="flex:1;display:flex;flex-direction:column;min-height:0">
+  <div class="tabs">
+    <button id="tabEditor" class="active" onclick="setTab('editor')">✏️ Редактор</button>
+    <button id="tabChat" onclick="setTab('chat')">💬 Чат</button>
+    <button id="tabPeople" onclick="setTab('people')">👥 Люди</button>
+  </div>
+  <main style="flex:1;min-height:0">
+
+    <div id="viewEditor" style="display:flex;flex:1;min-width:0">
+      <aside>
+        <div class="head"><span>Файлы</span><span class="add" onclick="newFile()" title="Новый файл">+</span></div>
+        <div class="list" id="fileList"></div>
+      </aside>
+      <div class="editor" id="editorPane">
+        <div class="bar">
+          <input id="fileName" value="" placeholder="имя.txt" onchange="renameFile()" />
+          <span class="stat" id="fileStat"></span>
+          <span class="saved" id="savedFlag"></span>
+          <button class="btn" onclick="sendFile()">📤 Отправить в чат</button>
+          <button class="btn ghost" onclick="saveFile()">💾 Сохранить</button>
+          <button class="btn ghost" onclick="downloadFile()">⬇️ Скачать</button>
+        </div>
+        <textarea id="fileText" placeholder="Пишите текст… Ctrl+S — сохранить" spellcheck="false"></textarea>
+      </div>
+      <div class="empty" id="editorEmpty">Создайте файл или выберите существующий</div>
+    </div>
+
+    <div id="viewChat" class="chat" style="display:none">
+      <div class="log" id="chatLog"></div>
+      <div class="composer">
+        <textarea id="chatInput" placeholder="Сообщение… Enter — отправить" onkeydown="chatKey(event)"></textarea>
+        <button class="btn" onclick="sendMsg()">Отправить</button>
+      </div>
+    </div>
+
+    <div id="viewPeople" style="display:none;flex:1">
+      <div class="people" id="peopleList"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─────────────────────────── api ───────────────────────────
+const TOKEN_KEY = 'txtchat.token'
+let token = localStorage.getItem(TOKEN_KEY)
+let me = null
+
+async function api(path, method = 'GET', body) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (token) headers['Authorization'] = 'Bearer ' + token
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || 'Ошибка ' + res.status)
+  return data
+}
+
+// ─────────────────────────── вход/регистрация ───────────────────────────
+let registerMode = false
+
+function toggleMode() {
+  registerMode = !registerMode
+  document.getElementById('authTitle').textContent = registerMode ? 'Регистрация' : 'Вход'
+  document.getElementById('authBtn').textContent = registerMode ? 'Зарегистрироваться' : 'Войти'
+  document.getElementById('switchBtn').textContent = registerMode ? 'У меня есть аккаунт' : 'Регистрация'
+  document.getElementById('nameField').classList.toggle('hidden', !registerMode)
+  document.getElementById('nameField').style.display = registerMode ? '' : 'none'
+  document.getElementById('authErr').textContent = ''
+}
+
+async function submitAuth() {
+  const email = document.getElementById('email').value.trim()
+  const name = document.getElementById('name').value.trim()
+  const password = document.getElementById('password').value
+  const err = document.getElementById('authErr')
+  err.textContent = ''
+  try {
+    const path = registerMode ? '/api/auth/register' : '/api/auth/login'
+    const body = registerMode ? { email, name, password } : { email, password }
+    const data = await api(path, 'POST', body)
+    token = data.token
+    localStorage.setItem(TOKEN_KEY, token)
+    me = data.user
+    enterApp()
+  } catch (e) {
+    err.textContent = e.message
+  }
+}
+
+async function logout() {
+  try { await api('/api/auth/logout', 'POST') } catch {}
+  token = null
+  localStorage.removeItem(TOKEN_KEY)
+  me = null
+  location.reload()
+}
+
+// ─────────────────────────── приложение ───────────────────────────
+
+function enterApp() {
+  document.getElementById('authView').classList.add('hidden')
+  document.getElementById('appView').classList.remove('hidden')
+  document.getElementById('who').textContent = me.name + ' · ' + me.email
+  refreshFiles()
+  refreshMessages()
+  refreshPeople()
+  connectEvents()
+}
+
+function setTab(tab) {
+  for (const t of ['editor', 'chat', 'people']) {
+    document.getElementById('tab' + t[0].toUpperCase() + t.slice(1)).classList.toggle('active', t === tab)
+  }
+  document.getElementById('viewEditor').style.display = tab === 'editor' ? 'flex' : 'none'
+  document.getElementById('viewChat').style.display = tab === 'chat' ? 'flex' : 'none'
+  document.getElementById('viewPeople').style.display = tab === 'people' ? 'block' : 'none'
+  if (tab === 'people') refreshPeople()
+}
+
+// ── файлы ──
+let files = []
+let currentFile = null
+let saveTimer = null
+
+async function refreshFiles() {
+  const data = await api('/api/files')
+  files = data.files
+  renderFiles()
+  if (!currentFile && files.length) openFile(files[0].id)
+}
+
+function renderFiles() {
+  const list = document.getElementById('fileList')
+  list.innerHTML = ''
+  for (const f of files) {
+    const el = document.createElement('div')
+    el.className = 'item' + (currentFile && currentFile.id === f.id ? ' active' : '')
+    el.innerHTML = `<span class="del" title="Удалить" onclick="event.stopPropagation();deleteFile('${f.id}')">✕</span>
+      <div class="nm">${esc(f.name)}</div>
+      <div class="sub">${fmtSize(f.size)} · ${fmtDate(f.updatedAt)}</div>`
+    el.onclick = () => openFile(f.id)
+    list.appendChild(el)
+  }
+}
+
+async function openFile(id) {
+  await saveNow()
+  const data = await api('/api/files/' + id)
+  currentFile = data.file
+  document.getElementById('fileName').value = currentFile.name
+  document.getElementById('fileText').value = currentFile.text
+  document.getElementById('editorPane').style.display = 'flex'
+  document.getElementById('editorEmpty').style.display = 'none'
+  updateStat()
+  renderFiles()
+}
+
+function newFile() {
+  currentFile = null
+  document.getElementById('fileName').value = 'новый.txt'
+  document.getElementById('fileText').value = ''
+  document.getElementById('editorPane').style.display = 'flex'
+  document.getElementById('editorEmpty').style.display = 'none'
+  document.getElementById('savedFlag').textContent = ''
+  updateStat()
+  renderFiles()
+}
+
+async function saveFile() {
+  const name = document.getElementById('fileName').value.trim() || 'без-имени.txt'
+  const text = document.getElementById('fileText').value
+  if (currentFile) {
+    await api('/api/files/' + currentFile.id, 'PUT', { name, text })
+  } else {
+    const data = await api('/api/files', 'POST', { name, text })
+    currentFile = data.file
+  }
+  document.getElementById('savedFlag').textContent = '✓ сохранено'
+  setTimeout(() => (document.getElementById('savedFlag').textContent = ''), 2000)
+  refreshFiles()
+}
+
+async function saveNow() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; await saveFile() }
+}
+
+// автосохранение при печатании (задержка 1.5 с)
+document.getElementById('fileText').addEventListener('input', () => {
+  updateStat()
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(saveFile, 1500)
+})
+document.getElementById('fileName').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveFile() }
+})
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveFile() }
+})
+
+async function renameFile() { if (currentFile) saveFile() }
+
+async function deleteFile(id) {
+  if (!confirm('Удалить файл?')) return
+  await api('/api/files/' + id, 'DELETE')
+  if (currentFile && currentFile.id === id) {
+    currentFile = null
+    document.getElementById('editorPane').style.display = 'none'
+    document.getElementById('editorEmpty').style.display = 'flex'
+  }
+  refreshFiles()
+}
+
+async function sendFile() {
+  await saveFile()
+  if (!currentFile) return alert('Сначала создайте файл')
+  try {
+    await api(`/api/files/${currentFile.id}/send`, 'POST')
+    setTab('chat')
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+function downloadFile() {
+  const name = document.getElementById('fileName').value.trim() || 'файл.txt'
+  const text = document.getElementById('fileText').value
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name.endsWith('.txt') ? name : name + '.txt'
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+function updateStat() {
+  const text = document.getElementById('fileText').value
+  document.getElementById('fileStat').textContent =
+    `${text.length} симв · ${text.split('\n').length} стр`
+}
+
+// ── чат ──
+let messages = []
+
+async function refreshMessages() {
+  const data = await api('/api/messages')
+  messages = data.messages
+  renderMessages()
+}
+
+function renderMessages() {
+  const log = document.getElementById('chatLog')
+  const stick = log.scrollHeight - log.scrollTop - log.clientHeight < 60
+  log.innerHTML = ''
+  for (const m of messages) {
+    const el = document.createElement('div')
+    el.className = 'msg' + (m.userId === me.id ? ' mine' : '')
+    el.innerHTML = `<div class="meta">${esc(m.name)} · ${fmtTime(m.createdAt)}</div>
+      <div class="body">${esc(m.text)}</div>`
+    log.appendChild(el)
+  }
+  if (stick) log.scrollTop = log.scrollHeight
+}
+
+async function sendMsg() {
+  const input = document.getElementById('chatInput')
+  const text = input.value.trim()
+  if (!text) return
+  input.value = ''
+  await api('/api/messages', 'POST', { text })
+}
+
+function chatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg() }
+}
+
+// ── люди ──
+async function refreshPeople() {
+  const data = await api('/api/users')
+  const list = document.getElementById('peopleList')
+  list.innerHTML = `<div style="color:var(--muted);font-size:13px;margin-bottom:12px">Зарегистрировано: ${data.total}</div>`
+  for (const u of data.users) {
+    const el = document.createElement('div')
+    el.className = 'person'
+    const initial = esc(u.name.charAt(0).toUpperCase())
+    el.innerHTML = `<div class="avatar">${initial}</div>
+      <div class="info"><div class="nm">${esc(u.name)}${u.id === me.id ? ' <span style="color:var(--accent)">(вы)</span>' : ''}</div>
+      <div class="em">${esc(u.email)}</div></div>
+      <div class="when">с ${fmtDate(u.createdAt)}</div>`
+    list.appendChild(el)
+  }
+}
+
+// ── live-события ──
+let es = null
+function connectEvents() {
+  if (es) es.close()
+  es = new EventSource('/api/events?token=' + encodeURIComponent(token))
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data)
+    if (ev.type === 'message') {
+      messages.push(ev.message)
+      renderMessages()
+    }
+  }
+  es.onerror = () => {
+    // переподключение — EventSource делает сам
+  }
+}
+
+// ─────────────────────────── утилиты ───────────────────────────
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[c])
+}
+
+function fmtDate(ts) {
+  return new Date(ts).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function fmtTime(ts) {
+  return new Date(ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' Б'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' КБ'
+  return (n / 1024 / 1024).toFixed(1) + ' МБ'
+}
+
+// ─────────────────────────── старт ───────────────────────────
+
+async function boot() {
+  if (!token) return
+  try {
+    const data = await api('/api/me')
+    me = data.user
+    enterApp()
+  } catch {
+    token = null
+    localStorage.removeItem(TOKEN_KEY)
+  }
+}
+boot()
+</script>
+</body>
+</html>
